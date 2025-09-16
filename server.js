@@ -2,23 +2,29 @@ require('dotenv').config();
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
+const morgan = require('morgan');
+
+console.log('Iniciando Portal NFe...');
 
 const app = express();
 
-// Usar porta do Render ou 3000 local
+// Porta Render ou 3000 local
 const PORT = process.env.PORT || 3000;
 
-// Diretório para salvar XMLs
+// Pasta downloads
 const DOWNLOAD_DIR = path.join(__dirname, 'downloads');
 if (!fs.existsSync(DOWNLOAD_DIR)) fs.mkdirSync(DOWNLOAD_DIR, { recursive: true });
 
-// Modo de operação: MOCK ou PLUGNOTAS
+// Modo de operação: MOCK
 const MODE = process.env.MODE || 'MOCK';
 
-// Servir arquivos estáticos
-app.use(express.static(path.join(__dirname, 'public')));
+// Logs e parser
+app.use(morgan('tiny'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Servir frontend
+app.use(express.static(path.join(__dirname, 'public')));
 
 // Função para gerar XMLs MOCK
 function sampleXml(chave) {
@@ -37,32 +43,31 @@ function sampleXml(chave) {
 </nfeProc>`;
 }
 
-// Função para baixar todos XMLs (MOCK)
+// Função para baixar XMLs MOCK
 async function baixarTodosXMLs() {
   try {
-    if (MODE === 'MOCK') {
-      for (let i = 1; i <= 5; i++) {
-        const chave = String(10000000000000000000000000000000000000000000 + i).slice(-44);
-        const xml = sampleXml(chave);
-        fs.writeFileSync(path.join(DOWNLOAD_DIR, `${chave}.xml`), xml);
-      }
+    for (let i = 1; i <= 5; i++) {
+      const chave = String(10000000000000000000000000000000000000000000 + i).slice(-44);
+      const xml = sampleXml(chave);
+      fs.writeFileSync(path.join(DOWNLOAD_DIR, `${chave}.xml`), xml);
     }
     return { ok: true, message: 'Download concluído.' };
   } catch (err) {
-    console.error('Erro ao baixar XMLs:', err.message);
+    console.error('Erro:', err.message);
     return { ok: false, error: err.message };
   }
 }
 
-// Endpoints
+// Endpoint download
 app.get('/api/download-all', async (req, res) => {
   const result = await baixarTodosXMLs();
   res.json(result);
 });
 
+// Health check
 app.get('/api/ping', (req, res) => res.json({ ok: true, mode: MODE }));
 
-// Rota default para index.html
+// Rota default para frontend
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });

@@ -2,22 +2,25 @@ require('dotenv').config();
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
-const axios = require('axios');
-const morgan = require('morgan');
 
 const app = express();
-app.use(morgan('tiny'));
+
+// Usar porta do Render ou 3000 local
+const PORT = process.env.PORT || 3000;
+
+// Diretório para salvar XMLs
+const DOWNLOAD_DIR = path.join(__dirname, 'downloads');
+if (!fs.existsSync(DOWNLOAD_DIR)) fs.mkdirSync(DOWNLOAD_DIR, { recursive: true });
+
+// Modo de operação: MOCK ou PLUGNOTAS
+const MODE = process.env.MODE || 'MOCK';
+
+// Servir arquivos estáticos
+app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-const MODE = process.env.MODE || 'MOCK'; // MOCK ou PLUGNOTAS
-const PLUGNOTAS_APIKEY = process.env.PLUGNOTAS_APIKEY || '';
-const PORT = process.env.PORT || 3000;
-
-const DOWNLOAD_DIR = path.join(__dirname, 'downloads');
-if (!fs.existsSync(DOWNLOAD_DIR)) fs.mkdirSync(DOWNLOAD_DIR);
-
-// Função MOCK para gerar XMLs de teste
+// Função para gerar XMLs MOCK
 function sampleXml(chave) {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <nfeProc versao="4.00" xmlns="http://www.portalfiscal.inf.br/nfe">
@@ -34,60 +37,37 @@ function sampleXml(chave) {
 </nfeProc>`;
 }
 
-// Função para baixar todos XMLs
+// Função para baixar todos XMLs (MOCK)
 async function baixarTodosXMLs() {
-  console.log('Iniciando download de todos os XMLs...');
   try {
     if (MODE === 'MOCK') {
-      // cria 5 XMLs de teste
       for (let i = 1; i <= 5; i++) {
         const chave = String(10000000000000000000000000000000000000000000 + i).slice(-44);
         const xml = sampleXml(chave);
-        const filePath = path.join(DOWNLOAD_DIR, `${chave}.xml`);
-        fs.writeFileSync(filePath, xml);
-        console.log(`XML MOCK salvo: ${filePath}`);
-      }
-    } else if (MODE === 'PLUGNOTAS') {
-      if (!PLUGNOTAS_APIKEY) throw new Error('PLUGNOTAS_APIKEY não configurada no .env');
-
-      // Listar notas (ajustar URL conforme doc PlugNotas)
-      const listResp = await axios.get('https://api.plugnotas.com.br/nfe', {
-        headers: { 'x-api-key': PLUGNOTAS_APIKEY }
-      });
-
-      const notas = listResp.data.notas || [];
-      for (let nota of notas) {
-        const chave = nota.chave;
-        const xmlResp = await axios.get(`https://api.plugnotas.com.br/nfe/${chave}/xml`, {
-          headers: { 'x-api-key': PLUGNOTAS_APIKEY },
-          responseType: 'arraybuffer'
-        });
-        const filePath = path.join(DOWNLOAD_DIR, `${chave}.xml`);
-        fs.writeFileSync(filePath, xmlResp.data);
-        console.log(`XML salvo: ${filePath}`);
+        fs.writeFileSync(path.join(DOWNLOAD_DIR, `${chave}.xml`), xml);
       }
     }
-    console.log('Download de todos os XMLs concluído.');
     return { ok: true, message: 'Download concluído.' };
   } catch (err) {
-    console.error('Erro:', err.message);
+    console.error('Erro ao baixar XMLs:', err.message);
     return { ok: false, error: err.message };
   }
 }
 
-// Frontend
-app.use('/', express.static(path.join(__dirname, 'public')));
-
-// Endpoint para baixar todos XMLs
+// Endpoints
 app.get('/api/download-all', async (req, res) => {
   const result = await baixarTodosXMLs();
   res.json(result);
 });
 
-// Health check
 app.get('/api/ping', (req, res) => res.json({ ok: true, mode: MODE }));
 
+// Rota default para index.html
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// Iniciar servidor
 app.listen(PORT, () => {
   console.log(`Portal NFe rodando na porta ${PORT} — MODE=${MODE}`);
 });
-
